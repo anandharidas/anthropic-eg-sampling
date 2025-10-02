@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { spawn } from 'child_process'
+import path from 'path'
+
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 
 export async function POST(req: NextRequest) {
   try {
@@ -10,8 +14,9 @@ export async function POST(req: NextRequest) {
 
     // Spawn the python client in printable mode and feed the URL via stdin prompts.
     // We rely on the interactive menu: send "printable_summary" then the url, then "quit".
+    const repoRoot = path.resolve(process.cwd(), '..')
     const proc = spawn('uv', ['run', 'client.py'], {
-      cwd: process.cwd().replace(/\/web$/, ''),
+      cwd: repoRoot,
       env: process.env,
     })
 
@@ -22,13 +27,14 @@ export async function POST(req: NextRequest) {
       stdout += d.toString()
       // Heuristics: once menu appears, send action and URL
       if (stdout.includes('Enter action')) {
-        proc.stdin.write('printable_summary\n')
+        proc.stdin?.write('printable_summary\n')
       }
       if (stdout.includes('Enter the HTTP link')) {
-        proc.stdin.write(url + '\n')
+        proc.stdin?.write(url + '\n')
       }
       if (stdout.includes('Markdown Formatted Summary:')) {
-        // We'll let the process continue; the caller will parse the block
+        // Ask client to quit to allow process to exit cleanly
+        proc.stdin?.write('quit\n')
       }
     })
 
@@ -37,7 +43,14 @@ export async function POST(req: NextRequest) {
     })
 
     const result: string = await new Promise((resolve, reject) => {
+      // Safety timeout in case the process hangs
+      const timeout = setTimeout(() => {
+        try { proc.kill('SIGKILL') } catch {}
+        reject(new Error('Timed out waiting for client output'))
+      }, 120000)
+
       proc.on('close', () => {
+        clearTimeout(timeout)
         // Extract the markdown section printed by the client
         const marker = 'Markdown Formatted Summary:\n'
         const idx = stdout.indexOf(marker)
@@ -54,8 +67,9 @@ export async function POST(req: NextRequest) {
     })
 
     return NextResponse.json({ markdown: result })
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message || String(e) }, { status: 500 })
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
 
