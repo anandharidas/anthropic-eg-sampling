@@ -1,6 +1,7 @@
 import logging
 from mcp.server.fastmcp import FastMCP, Context
 from mcp.types import SamplingMessage, TextContent
+import asyncio
 
 # Configure logging for server
 logging.basicConfig(
@@ -89,6 +90,18 @@ async def format_to_markdown(summary_text: str, ctx: Context):
     else:
         logger.error(f"Markdown formatting failed - unexpected content type: {result.content.type}")
         raise ValueError("Markdown formatting failed")
+
+@mcp.tool()
+async def add(a: int, b: int, ctx: Context) -> int:
+    await ctx.info("Preparing to add...")
+    await ctx.report_progress(20, 100)
+
+    await asyncio.sleep(2)
+
+    await ctx.info("OK, adding...")
+    await ctx.report_progress(80, 100)
+
+    return a + b
 
 
 if __name__ == "__main__":

@@ -15,6 +15,10 @@ from mcp.types import (
     SamplingMessage,
 )
 
+from mcp.types import LoggingMessageNotificationParams
+
+
+
 # Configure logging for client
 logging.basicConfig(
     level=logging.INFO,
@@ -50,6 +54,25 @@ logger.info(f"Initializing Anthropic client with model: {model}")
 anthropic_client = AsyncAnthropic(api_key=api_key)
 
 
+server_params = StdioServerParameters(
+    command="uv",
+    args=["run", "server.py"],
+)
+
+
+async def logging_callback(params: LoggingMessageNotificationParams):
+    print(params.data)
+
+
+async def print_progress_callback(
+    progress: float, total: float | None, message: str | None
+):
+    if total is not None:
+        percentage = (progress / total) * 100
+        print(f"Progress: {progress}/{total} ({percentage:.1f}%)")
+    else:
+        print(f"Progress: {progress}")
+        
 async def download_and_extract_content(url: str) -> str:
     """Download and extract text content from PDF or TXT files."""
     logger.info(f"Starting download from URL: {url}")
@@ -182,7 +205,8 @@ async def run():
     async with stdio_client(server_params) as (read, write):
         logger.info("Stdio client connection established")
         async with ClientSession(
-            read, write, sampling_callback=sampling_callback
+            read, write, sampling_callback=sampling_callback,
+            logging_callback=logging_callback
         ) as session:
             logger.info("Client session created, initializing...")
             await session.initialize()
@@ -194,6 +218,12 @@ async def run():
             print("2. printable_summary - Summarize a document and format as markdown")
             print("3. quit - Exit the client")
             print()
+            
+            await session.call_tool(
+                name="add",
+                arguments={"a": 1, "b": 3},
+                progress_callback=print_progress_callback,
+            )
 
             while True:
                 try:
